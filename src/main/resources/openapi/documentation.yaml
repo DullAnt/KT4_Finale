@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: Ktor Final API
+  description: |
+    REST API с PostgreSQL, JWT аутентификацией, ролями и WebSocket чатом.
+    
+    ## Роли
+    - **USER** - обычный пользователь, может управлять своими задачами
+    - **ADMIN** - администратор, может управлять всеми пользователями и задачами
+    
+    ## WebSocket
+    Подключение к чату: `ws://localhost:8080/ws/chat?token=YOUR_JWT`
+    
+    ## Аутентификация
+    Добавьте заголовок `Authorization: Bearer <token>` к защищённым запросам.
+    
+    ## Админ по умолчанию
+    - Username: `admin`
+    - Password: `admin123`
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+
+tags:
+  - name: Auth
+    description: Аутентификация
+  - name: Tasks
+    description: CRUD задач (требуют JWT)
+  - name: Admin
+    description: Админ-панель (только ADMIN)
+  - name: WebSocket
+    description: Чат и оповещения
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          example: testuser
+        email:
+          type: string
+          example: test@mail.com
+        password:
+          type: string
+          minLength: 4
+          example: "1234"
+    
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [USER, ADMIN]
+    
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+    
+    TaskRequest:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        completed:
+          type: boolean
+          default: false
+    
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        completed:
+          type: boolean
+        userId:
+          type: integer
+        createdAt:
+          type: string
+    
+    RoleUpdateRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [USER, ADMIN]
+    
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: integer
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: Username занят
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверные данные
+
+  /api/tasks:
+    get:
+      tags: [Tasks]
+      summary: Получить задачи
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: completed
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список задач
+    post:
+      tags: [Tasks]
+      summary: Создать задачу
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskRequest'
+      responses:
+        '201':
+          description: Задача создана
+
+  /api/tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Получить задачу
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Задача
+        '404':
+          description: Не найдена
+    put:
+      tags: [Tasks]
+      summary: Обновить задачу
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskRequest'
+      responses:
+        '200':
+          description: Обновлена
+    delete:
+      tags: [Tasks]
+      summary: Удалить задачу
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Удалена
+
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      summary: Все пользователи
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Список пользователей
+        '403':
+          description: Доступ запрещён
+
+  /api/admin/users/{id}/role:
+    put:
+      tags: [Admin]
+      summary: Изменить роль
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleUpdateRequest'
+      responses:
+        '200':
+          description: Роль изменена
+        '403':
+          description: Доступ запрещён
+
+  /api/admin/users/{id}:
+    delete:
+      tags: [Admin]
+      summary: Удалить пользователя
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Удалён
+
+  /api/admin/tasks:
+    get:
+      tags: [Admin]
+      summary: Все задачи
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Список задач
+
+  /api/chat/online:
+    get:
+      tags: [WebSocket]
+      summary: Онлайн пользователи
+      responses:
+        '200':
+          description: Список онлайн
+
+  /ws/chat:
+    get:
+      tags: [WebSocket]
+      summary: WebSocket чат
+      description: |
+        Подключение: `ws://localhost:8080/ws/chat?token=YOUR_JWT`
+        
+        **Входящие сообщения (от сервера):**
+        - `{"type": "history", "payload": "[...]"}` - история чата
+        - `{"type": "chat", "payload": "{...}"}` - новое сообщение
+        - `{"type": "notification", "payload": "text"}` - уведомление
+        
+        **Исходящие сообщения (от клиента):**
+        - Просто текст сообщения
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '101':
+          description: WebSocket соединение
