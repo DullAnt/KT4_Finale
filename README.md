@@ -222,10 +222,4 @@ docker build -t your-username/ktor-final .
 docker push your-username/ktor-final
 ```
 
-### Heroku
-```bash
-heroku create your-app-name
-heroku addons:create heroku-postgresql:mini
-heroku config:set JWT_SECRET=your-production-secret
-git push heroku main
-```
+
